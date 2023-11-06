@@ -1,0 +1,87 @@
+version: '3'
+services:
+  http-api:
+    build:
+      context: ./api_service
+    ports:
+      - "8080:8080"
+    networks:
+      - mynetwork
+    depends_on:
+      - rabbitmq
+    restart: always
+    # environment:
+    #     AMQP_URL: "amqp://guest:guest@localhost:5672/"
+
+  rabbitmq:
+    image: 'rabbitmq:3-management'
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    environment:
+      RABBITMQ_DEFAULT_USER: "guest"
+      RABBITMQ_DEFAULT_PASS: "guest"
+      # RABBITMQ_SERVER_ADDITIONAL_ERL_ARGS: -rabbit disk_free_limit 2147483648
+    networks:
+      - mynetwork
+    restart: always
+    # volumes:
+    #   - ./rabbitmq:/var/lib/rabbitmq
+
+  transaction_service:
+    build:
+      context: ./transaction_service
+    links:
+      - rabbitmq
+    depends_on:
+      - rabbitmq
+    networks:
+      - mynetwork
+    restart: always
+    # environment:
+    #     AMQP_URL: "amqp://guest:guest@localhost:5672/"
+                    
+  sql-service:
+    build:
+      context: ./sql_service 
+    ports:
+      - "50051:50051"
+    depends_on:
+      - postgres  
+    networks:
+      - mynetwork
+    restart: always
+
+
+  postgres:
+    image: postgres:alpine
+    ports:
+      - "5433:5432"
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: postgres
+    restart: always
+    networks:
+      - mynetwork
+    # volumes:
+    #   - postgres-data:/var/lib/postgresql/data
+    # healthcheck:
+    #   test: ["CMD-SHELL", "pg_isready"]
+    #   interval: 10s
+    #   timeout: 5s
+    #   retries: 5
+
+networks:
+  mynetwork: {}
+
+# networks:
+#   mynetwork:
+#     driver: bridge
+#     driver_opts:
+#         com.docker.network.enable_ipv6: "false"
+#     ipam:
+#       driver: default
+#       config:
+#         - subnet: 192.168.2.0/24
+#           gateway: 192.168.2.1
