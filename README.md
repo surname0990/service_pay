@@ -11,10 +11,14 @@ Services:
 *RabbitMQ: 
 - для обмена данными: api-service -- Transaction Service
 
+*Postrges: 
+- для обмена данными: sql-service
+
 *gRPC:  
 - для обмена данными: api-service -- sql-service
 
 - для обмена данными: transaction-service -- sql-service
+
 
 Must create tables:
 
@@ -44,7 +48,7 @@ Must create tables:
 
 Command:
 
--  docker build -t api_service .
+- docker build -t api_service .
 
 - docker build -t transaction_service .
 
