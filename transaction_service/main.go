@@ -4,16 +4,18 @@ import (
 	"context"
 	"encoding/json"
 	"log"
-	"time"
+	"os"
 
 	pb "transaction_service/grpc/proto"
 
 	"github.com/golang/protobuf/ptypes/timestamp"
 	"github.com/google/uuid"
+	"github.com/joho/godotenv"
 	"github.com/streadway/amqp"
 	"google.golang.org/grpc"
 )
 
+// structs
 type WithdrawRequest struct {
 	WalletID int     `json:"wallet_id"`
 	Amount   float64 `json:"amount"`
@@ -25,8 +27,26 @@ type DepositRequest struct {
 }
 
 func main() {
-	time.Sleep(10 * time.Second)
-	conn, err := amqp.Dial("amqp://guest:guest@localhost:5672/")
+	err := godotenv.Load(".env")
+	if err != nil {
+		log.Fatal("Error loading .env file")
+	}
+
+	// gRPC Connect to sql-service
+	sqlServiceConnString := os.Getenv("SQL_SERVICE_ADDRESS")
+	log.Printf("Sql-service: %s\n", sqlServiceConnString)
+	connSQL, err := grpc.Dial(sqlServiceConnString, grpc.WithInsecure())
+	if err != nil {
+		log.Fatalf("Failed to connect to SQL service: %v", err)
+		return
+	}
+	defer connSQL.Close()
+	sqlServiceClient := pb.NewSQLServiceClient(connSQL)
+
+	// RabbitMQ Connect
+	rabbitConnString := os.Getenv("RABBITMQ_ADDRESS")
+	log.Printf("RABBIT: %s\n", rabbitConnString)
+	conn, err := amqp.Dial(rabbitConnString)
 	if err != nil {
 		log.Fatal("Failed to connect to RabbitMQ")
 		return
@@ -92,15 +112,6 @@ func main() {
 		log.Fatal("Failed to register a consumer for withdraw requests")
 		return
 	}
-
-	connSQL, err := grpc.Dial("localhost:50051", grpc.WithInsecure())
-	if err != nil {
-		log.Fatalf("Failed to connect to SQL service: %v", err)
-		return
-	}
-	defer connSQL.Close()
-
-	sqlServiceClient := pb.NewSQLServiceClient(connSQL)
 
 	// Withdraw
 	go func() {
@@ -178,6 +189,7 @@ func main() {
 			}
 		}
 	}()
+
 	// Deposit
 	go func() {
 		for msg := range messagesDeposit {
@@ -196,7 +208,7 @@ func main() {
 			if depositRequest.Amount > 1000000000 {
 				log.Println("Error: Deposit amount exceeds the limit of 1,000,000,000.")
 
-				// Transaction "error" status
+				// Transaction "error"
 				newTransaction := &pb.Transaction{
 					TransactionId: uuid.New().String(),
 					WalletId:      int32(depositRequest.WalletID),
@@ -211,7 +223,6 @@ func main() {
 				} else {
 					log.Println("New error deposit transaction created successfully")
 				}
-
 				continue
 			}
 
@@ -229,7 +240,7 @@ func main() {
 			if newBalance > 1000000000 {
 				log.Println("Error: Deposit would exceed the balance limit of 1,000,000,000.")
 
-				// Transaction "error" status
+				// Transaction "error"
 				newTransaction := &pb.Transaction{
 					TransactionId: uuid.New().String(),
 					WalletId:      int32(depositRequest.WalletID),
@@ -259,7 +270,7 @@ func main() {
 				continue
 			}
 
-			// Successful deposit transaction
+			// Successful deposit
 			newTransaction := &pb.Transaction{
 				TransactionId: uuid.New().String(),
 				WalletId:      int32(depositRequest.WalletID),

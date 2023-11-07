@@ -14,7 +14,7 @@ type Server struct {
 
 func (s *Server) GetTransactionID(ctx context.Context, req *api.TransactionId) (*api.Transaction, error) {
 	transaction_id := req.TransactionId
-	transaction, err := db.GetTxID(transaction_id)
+	transaction, err := db.GetTransactionID(transaction_id)
 	if err != nil {
 		log.Printf("Error getting transaction from the database: %v", err)
 		return nil, err
@@ -42,7 +42,7 @@ func (s *Server) GetBalance(ctx context.Context, req *api.WalletIdRequest) (*api
 	if err != nil {
 		return nil, err
 	}
-	fmt.Printf("Balance Wallet ID - %d: %.2f \n", req.WalletId, balance)
+	// fmt.Printf("Balance Wallet ID - %d: %.2f \n", req.WalletId, balance)
 	return &api.BalanceResponse{Balance: balance}, nil
 }
 
@@ -55,9 +55,9 @@ func (s *Server) CreateTransaction(ctx context.Context, req *api.Transaction) (*
 	transactionTime := time.Now()
 	formattedTransactionTime := transactionTime.Format("2006-01-02 15:04:05.00")
 
-	fmt.Printf("Transaction Details:\nTransaction Id: %s\nWallet ID: %d\nAmount: %.2f\nTransaction Type: %s\nTransaction Status: %s\nTransaction Time: %s\n", TransactionId, walletID, amount, typeTx, statusTx, transactionTime)
+	fmt.Printf("\nNew Transaction:\nTransaction Id: %s\nWallet ID: %d\nAmount: %.2f\nTransaction Type: %s\nTransaction Status: %s\nTransaction Time: %s\n\n", TransactionId, walletID, amount, typeTx, statusTx, formattedTransactionTime)
 
-	if err := db.NewTx(TransactionId, walletID, amount, typeTx, statusTx, formattedTransactionTime); err != nil {
+	if err := db.NewTransaction(TransactionId, walletID, amount, typeTx, statusTx, formattedTransactionTime); err != nil {
 		return nil, err
 	}
 
@@ -72,6 +72,7 @@ func (s *Server) UpdateBalance(ctx context.Context, req *api.UpdateBalanceReques
 		log.Printf("Failed to update balance: %v", err)
 		return nil, err
 	}
+	// fmt.Printf("UpdateBalance Wallet ID - %d: %.2f \n", req.WalletId, newBalance)
 
 	return &api.Empty{}, nil
 }

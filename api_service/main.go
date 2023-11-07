@@ -3,13 +3,16 @@ package main
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"log"
 	"net/http"
+	"os"
+	"time"
 
 	pb "api_service/grpc/proto"
 
 	"github.com/gin-gonic/gin"
+	"github.com/golang/protobuf/ptypes/timestamp"
+	"github.com/joho/godotenv"
 	"github.com/streadway/amqp"
 	"google.golang.org/grpc"
 )
@@ -32,26 +35,39 @@ type Transaction struct {
 	Status          string  `json:"status"`
 	TransactionTime string  `json:"transaction_time"`
 }
+type Api struct {
+	SQLServiceConn *grpc.ClientConn
+	RabbitConn     *amqp.Connection
+}
 
 func main() {
+	InitConfig()
+	api, err := NewApi(os.Getenv("SQL_SERVICE_ADDRESS"), os.Getenv("RABBITMQ_ADDRESS"))
+	if err != nil {
+		log.Fatalf("Failed to init api-service: %v", err)
+		return
+	}
+	defer api.Close()
+
 	r := gin.Default()
 
-	r.GET("/get-transaction/:id", getTransactionHandler)
-	r.POST("/deposit", depositHandler)
-	r.POST("/withdraw", withdrawHandler)
+	r.GET("/get-transaction/:id", api.getTransactionHandler)
+	r.POST("/deposit", api.depositHandler)
+	r.POST("/withdraw", api.withdrawHandler)
 
-	err := r.Run(":8080")
+	httpPort := os.Getenv("HTTP_PORT")
+	err = r.Run(httpPort)
 	if err != nil {
 		log.Fatal("HTTP server failed to start")
 	}
 }
 
-func getTransactionHandler(c *gin.Context) {
+// API
+func (a *Api) getTransactionHandler(c *gin.Context) {
 	id := c.Param("id")
+	log.Printf("Received ID: %s\n", id)
 
-	fmt.Printf("Received ID: %s\n", id)
-
-	transaction, err := getTransactionFromService(id)
+	transaction, err := a.getTransactionFromService(id)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get transaction"})
 		return
@@ -60,24 +76,23 @@ func getTransactionHandler(c *gin.Context) {
 	c.JSON(http.StatusOK, transaction)
 }
 
-func getTransactionFromService(id string) (Transaction, error) {
-	connSQL, err := grpc.Dial("localhost:50051", grpc.WithInsecure())
-
-	if err != nil {
-		log.Fatalf("Failed to connect to SQL service: %v", err)
-		return Transaction{}, err
-	}
-	defer connSQL.Close()
-
-	sqlServiceClient := pb.NewSQLServiceClient(connSQL)
+func (a *Api) getTransactionFromService(id string) (Transaction, error) {
+	// defer a.SQLServiceConn.Close() //
+	sqlServiceClient := pb.NewSQLServiceClient(a.SQLServiceConn)
 	ctx := context.Background()
-
 	request := &pb.TransactionId{
 		TransactionId: id,
 	}
 
 	response, err := sqlServiceClient.GetTransactionID(ctx, request)
 	if err != nil {
+		log.Println("Error request GetTransactionID:", err)
+		return Transaction{}, err
+	}
+
+	formattedTime, err := ProtoTimestampToFormattedTime(response.GetRequestTime())
+	if err != nil {
+		log.Println("Error FormattedTime:", err)
 		return Transaction{}, err
 	}
 
@@ -87,13 +102,13 @@ func getTransactionFromService(id string) (Transaction, error) {
 		Value:           response.Amount,
 		Type:            response.Type,
 		Status:          response.Status,
-		TransactionTime: response.GetRequestTime().String(),
+		TransactionTime: formattedTime,
 	}
 
 	return result, nil
 }
 
-func depositHandler(c *gin.Context) {
+func (a *Api) depositHandler(c *gin.Context) {
 	var depositRequest DepositRequest
 
 	if err := c.ShouldBindJSON(&depositRequest); err != nil {
@@ -101,8 +116,8 @@ func depositHandler(c *gin.Context) {
 		return
 	}
 
-	if err := publishDeposit(depositRequest); err != nil {
-		log.Println(err)
+	if err := a.publishDeposit(depositRequest); err != nil {
+		log.Println("Error publishDeposit:", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to publish deposit request"})
 		return
 	}
@@ -110,14 +125,8 @@ func depositHandler(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "Deposit request sent to RabbitMQ"})
 }
 
-func publishDeposit(depositRequest DepositRequest) error {
-	conn, err := amqp.Dial("amqp://guest:guest@localhost:5672/")
-	if err != nil {
-		return err
-	}
-	defer conn.Close()
-
-	ch, err := conn.Channel()
+func (a *Api) publishDeposit(depositRequest DepositRequest) error {
+	ch, err := a.RabbitConn.Channel()
 	if err != nil {
 		return err
 	}
@@ -137,7 +146,6 @@ func publishDeposit(depositRequest DepositRequest) error {
 
 	body, err := json.Marshal(depositRequest)
 	if err != nil {
-
 		return err
 	}
 
@@ -157,7 +165,7 @@ func publishDeposit(depositRequest DepositRequest) error {
 	return nil
 }
 
-func withdrawHandler(c *gin.Context) {
+func (a *Api) withdrawHandler(c *gin.Context) {
 	var withdrawRequest WithdrawRequest
 
 	if err := c.ShouldBindJSON(&withdrawRequest); err != nil {
@@ -165,7 +173,7 @@ func withdrawHandler(c *gin.Context) {
 		return
 	}
 
-	if err := publishWithdraw(withdrawRequest); err != nil {
+	if err := a.publishWithdraw(withdrawRequest); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to publish withdraw request"})
 		return
 	}
@@ -173,15 +181,8 @@ func withdrawHandler(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "Withdraw request sent to RabbitMQ"})
 }
 
-func publishWithdraw(withdrawRequest WithdrawRequest) error {
-	conn, err := amqp.Dial("amqp://guest:guest@localhost:5672/")
-
-	if err != nil {
-		panic(err)
-	}
-	defer conn.Close()
-
-	ch, err := conn.Channel()
+func (a *Api) publishWithdraw(withdrawRequest WithdrawRequest) error {
+	ch, err := a.RabbitConn.Channel()
 	if err != nil {
 		return err
 	}
@@ -218,4 +219,49 @@ func publishWithdraw(withdrawRequest WithdrawRequest) error {
 	}
 
 	return nil
+}
+
+// utils
+func ProtoTimestampToFormattedTime(ts *timestamp.Timestamp) (string, error) {
+	seconds := int64(ts.GetSeconds())
+	nanos := int64(ts.GetNanos())
+
+	duration := time.Second*time.Duration(seconds) + time.Nanosecond*time.Duration(nanos)
+	t := time.Unix(0, duration.Nanoseconds())
+	formattedTime := t.Format("2006-01-02 15:04:05.00")
+
+	return formattedTime, nil
+}
+
+func InitConfig() {
+	err := godotenv.Load(".env")
+	if err != nil {
+		log.Fatal("Error loading .env file")
+	}
+}
+
+func NewApi(sqlServiceConnString, rabbitConnString string) (*Api, error) {
+	sqlServiceConn, err := grpc.Dial(sqlServiceConnString, grpc.WithInsecure())
+	if err != nil {
+		return nil, err
+	}
+	log.Println("Sql-service Connected.")
+
+	rabbitConn, err := amqp.Dial(rabbitConnString)
+	if err != nil {
+		// sqlServiceConn.Close()
+		log.Println(err)
+		return nil, err
+	}
+	log.Println("Rabbit Connected.\n")
+
+	return &Api{
+		SQLServiceConn: sqlServiceConn,
+		RabbitConn:     rabbitConn,
+	}, nil
+}
+func (a *Api) Close() {
+	a.SQLServiceConn.Close()
+	a.RabbitConn.Close()
+
 }

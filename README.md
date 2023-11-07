@@ -27,7 +27,7 @@ TABLE transactions
   value DECIMAL(10, 2) NOT NULL,
   type VARCHAR(255) NOT NULL,
   status VARCHAR(255) NOT NULL,
-  transaction_time VARCHAR(255) NOT NULL,
+  transaction_time VARCHAR(255) NOT NULL, //change type on time
   FOREIGN KEY (wallet_id) REFERENCES wallets(id)
 
 

@@ -5,13 +5,13 @@ services:
       context: ./api_service
     ports:
       - "8080:8080"
-    networks:
-      - mynetwork
     depends_on:
       - rabbitmq
     restart: always
-    # environment:
-    #     AMQP_URL: "amqp://guest:guest@localhost:5672/"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    # networks:
+    #   - mynetwork
 
   rabbitmq:
     image: 'rabbitmq:3-management'
@@ -22,11 +22,13 @@ services:
       RABBITMQ_DEFAULT_USER: "guest"
       RABBITMQ_DEFAULT_PASS: "guest"
       # RABBITMQ_SERVER_ADDITIONAL_ERL_ARGS: -rabbit disk_free_limit 2147483648
-    networks:
-      - mynetwork
     restart: always
     # volumes:
     #   - ./rabbitmq:/var/lib/rabbitmq
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    # networks:
+    #   - mynetwork
 
   transaction_service:
     build:
@@ -35,11 +37,12 @@ services:
       - rabbitmq
     depends_on:
       - rabbitmq
-    networks:
-      - mynetwork
     restart: always
-    # environment:
-    #     AMQP_URL: "amqp://guest:guest@localhost:5672/"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    # networks:
+    #   - mynetwork
+
                     
   sql-service:
     build:
@@ -48,32 +51,37 @@ services:
       - "50051:50051"
     depends_on:
       - postgres  
-    networks:
-      - mynetwork
     restart: always
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    # networks:
+    #   - mynetwork
 
 
   postgres:
-    image: postgres:alpine
+    image: postgres
     ports:
       - "5433:5432"
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
       POSTGRES_DB: postgres
+      # PGDATA: "/var/lib/postgresql/data/pgdata"
     restart: always
-    networks:
-      - mynetwork
-    # volumes:
-    #   - postgres-data:/var/lib/postgresql/data
-    # healthcheck:
-    #   test: ["CMD-SHELL", "pg_isready"]
-    #   interval: 10s
-    #   timeout: 5s
-    #   retries: 5
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -d $${POSTGRES_DB} -U $${POSTGRES_USER}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    # networks:
+    #   - mynetwork
 
-networks:
-  mynetwork: {}
+
+
+# networks:
+#   mynetwork: {}
 
 # networks:
 #   mynetwork:

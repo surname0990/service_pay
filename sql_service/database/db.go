@@ -3,12 +3,13 @@ package database
 import (
 	"context"
 	"fmt"
+	"log"
+	"os"
 	api "sql_service/grpc/proto"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v4/pgxpool"
-	log "github.com/sirupsen/logrus"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
@@ -16,11 +17,11 @@ var dbPool *pgxpool.Pool
 
 func InitDB() {
 	var err error
-	dbPool, err = pgxpool.Connect(context.Background(), "postgres://postgres:postgres@localhost/postgres?sslmode=disable&pool_max_conns=10")
+	dbPool, err = pgxpool.Connect(context.Background(), os.Getenv("POSTRGRES_STRING"))
 	if err != nil {
 		log.Fatalf("Unable to connection to database: %v", err)
 	}
-	log.Infof("DB connected")
+	log.Println("DB connected")
 }
 
 func UpdateBalance(walletID int, newBalance float64) error {
@@ -52,7 +53,7 @@ func UpdateBalance(walletID int, newBalance float64) error {
 	return nil
 }
 
-func NewTx(TransactionId string, walletID int, amount float64, typeTx string, statusTx string, transactionTime string) error {
+func NewTransaction(TransactionId string, walletID int, amount float64, typeTx string, statusTx string, transactionTime string) error {
 	if dbPool == nil {
 		return fmt.Errorf("database pool is not initialized")
 	}
@@ -101,7 +102,7 @@ func GetBalanceByIDwallet(walletID int) (float64, error) {
 	return balance, nil
 }
 
-func GetTxID(TransactionId string) (*api.Transaction, error) {
+func GetTransactionID(TransactionId string) (*api.Transaction, error) {
 	fmt.Printf("str: %s", TransactionId)
 	if dbPool == nil {
 		return nil, fmt.Errorf("database pool is not initialized")
@@ -131,11 +132,9 @@ func GetTxID(TransactionId string) (*api.Transaction, error) {
 
 	transactionIDStr := TransactionIdUuid.String()
 
-	transactionTime, err := time.Parse("2006-01-02T15:04:05Z", transactionTimeStr)
-	if err != nil {
-		return nil, err
-	}
-
+	// string to time
+	transactionTime, err := time.Parse("2006-01-02 15:04:05", transactionTimeStr)
+	//time to TimeProto
 	requestTimeProto := timestamppb.New(transactionTime)
 
 	transaction := &api.Transaction{
@@ -150,6 +149,7 @@ func GetTxID(TransactionId string) (*api.Transaction, error) {
 	return transaction, nil
 }
 
+// utils
 func StrToUuid(Str string) (uuid.UUID, error) {
 	uuid, err := uuid.Parse(Str)
 	if err != nil {
