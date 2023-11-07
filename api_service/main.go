@@ -77,7 +77,6 @@ func (a *Api) getTransactionHandler(c *gin.Context) {
 }
 
 func (a *Api) getTransactionFromService(id string) (Transaction, error) {
-	// defer a.SQLServiceConn.Close() //
 	sqlServiceClient := pb.NewSQLServiceClient(a.SQLServiceConn)
 	ctx := context.Background()
 	request := &pb.TransactionId{
@@ -245,7 +244,6 @@ func NewApi(sqlServiceConnString, rabbitConnString string) (*Api, error) {
 	if err != nil {
 		return nil, err
 	}
-	log.Println("Sql-service Connected.")
 
 	rabbitConn, err := amqp.Dial(rabbitConnString)
 	if err != nil {
@@ -253,7 +251,6 @@ func NewApi(sqlServiceConnString, rabbitConnString string) (*Api, error) {
 		log.Println(err)
 		return nil, err
 	}
-	log.Println("Rabbit Connected.\n")
 
 	return &Api{
 		SQLServiceConn: sqlServiceConn,
