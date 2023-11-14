@@ -4,18 +4,17 @@ import (
 	"log"
 	"net"
 	"os"
-	"sql_service/database"
+	database "sql_service/database"
 	sql_service "sql_service/grpc"
 	api "sql_service/grpc/proto"
 
 	"github.com/joho/godotenv"
-
 	"google.golang.org/grpc"
 )
 
 func main() {
 	InitConfig()
-	database.InitDB()
+	database.InitDB() // +migration
 	ListenerGrpcServer()
 }
 

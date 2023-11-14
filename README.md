@@ -9,18 +9,25 @@ Services:
 - sql-service: Cервис для обмена данными между transaction-service и PostgreSQL. 
 
 *RabbitMQ: 
-- для обмена данными: api-service -- Transaction Service
-
-*Postrges: 
-- для обмена данными: sql-service
+- для обмена данными: api-service -- transaction-service
 
 *gRPC:  
 - для обмена данными: api-service -- sql-service
 
 - для обмена данными: transaction-service -- sql-service
 
+Command:
 
-Must create tables:
+- docker-compose up --buld
+
+TEST requests:
+
+- curl -X POST -d '{"wallet_id": 1, "amount": 500}' http://localhost:8080/deposit
+
+- curl http://localhost:8080/get-transaction/f47cbde3-98d8-47cb-a30b-1046b1f70b75
+
+
+Tables:
 
 - TABLE wallets 
 
@@ -45,19 +52,6 @@ Must create tables:
 
   FOREIGN KEY (wallet_id) REFERENCES wallets(id)
   
-
-Command:
-
-- docker build -t api_service .
-
-- docker build -t transaction_service .
-
-- docker build -t sql_service .
-
-- docker-compose build
-
-- docker-compose up 
-
 
 
 

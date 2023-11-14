@@ -35,6 +35,7 @@ type Transaction struct {
 	Status          string  `json:"status"`
 	TransactionTime string  `json:"transaction_time"`
 }
+
 type Api struct {
 	SQLServiceConn *grpc.ClientConn
 	RabbitConn     *amqp.Connection
@@ -42,6 +43,7 @@ type Api struct {
 
 func main() {
 	InitConfig()
+
 	api, err := NewApi(os.Getenv("SQL_SERVICE_ADDRESS"), os.Getenv("RABBITMQ_ADDRESS"))
 	if err != nil {
 		log.Fatalf("Failed to init api-service: %v", err)
@@ -62,6 +64,61 @@ func main() {
 	}
 }
 
+func InitConfig() {
+	err := godotenv.Load(".env")
+	if err != nil {
+		log.Fatal("Error loading .env file")
+	}
+}
+
+func NewApi(sqlServiceConnString, rabbitConnString string) (*Api, error) {
+	var api *Api
+
+	for {
+		sqlServiceConn, err := grpc.Dial(sqlServiceConnString, grpc.WithInsecure())
+		if err != nil {
+			log.Printf("Failed to connect to sql-service: %v. Retrying...", err)
+			time.Sleep(5 * time.Second)
+			continue
+		}
+
+		rabbitConn, err := connectRabbitMQ(rabbitConnString)
+		if err != nil {
+			sqlServiceConn.Close()
+			log.Printf("Failed to connect to rabbit: %v. Retrying...", err)
+			time.Sleep(5 * time.Second)
+			continue
+		}
+
+		api = &Api{
+			SQLServiceConn: sqlServiceConn,
+			RabbitConn:     rabbitConn,
+		}
+
+		log.Println("sql-service and rabbit Connected")
+		break
+	}
+
+	return api, nil
+}
+
+func connectRabbitMQ(rabbitConnString string) (*amqp.Connection, error) {
+	for {
+		conn, err := amqp.Dial(rabbitConnString)
+		if err != nil {
+			log.Printf("Failed to connect to RabbitMQ: %v. Retrying...", err)
+			time.Sleep(5 * time.Second)
+			continue
+		}
+		return conn, nil
+	}
+}
+
+func (a *Api) Close() {
+	a.SQLServiceConn.Close()
+	a.RabbitConn.Close()
+}
+
 // API
 func (a *Api) getTransactionHandler(c *gin.Context) {
 	id := c.Param("id")
@@ -69,6 +126,7 @@ func (a *Api) getTransactionHandler(c *gin.Context) {
 
 	transaction, err := a.getTransactionFromService(id)
 	if err != nil {
+		log.Printf("Error getting transaction: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get transaction"})
 		return
 	}
@@ -230,35 +288,4 @@ func ProtoTimestampToFormattedTime(ts *timestamp.Timestamp) (string, error) {
 	formattedTime := t.Format("2006-01-02 15:04:05.00")
 
 	return formattedTime, nil
-}
-
-func InitConfig() {
-	err := godotenv.Load(".env")
-	if err != nil {
-		log.Fatal("Error loading .env file")
-	}
-}
-
-func NewApi(sqlServiceConnString, rabbitConnString string) (*Api, error) {
-	sqlServiceConn, err := grpc.Dial(sqlServiceConnString, grpc.WithInsecure())
-	if err != nil {
-		return nil, err
-	}
-
-	rabbitConn, err := amqp.Dial(rabbitConnString)
-	if err != nil {
-		// sqlServiceConn.Close()
-		log.Println(err)
-		return nil, err
-	}
-
-	return &Api{
-		SQLServiceConn: sqlServiceConn,
-		RabbitConn:     rabbitConn,
-	}, nil
-}
-func (a *Api) Close() {
-	a.SQLServiceConn.Close()
-	a.RabbitConn.Close()
-
 }

@@ -2,15 +2,13 @@ package sql_service
 
 import (
 	"context"
-	"fmt"
 	"log"
 	db "sql_service/database"
 	api "sql_service/grpc/proto"
 	"time"
 )
 
-type Server struct {
-}
+type Server struct{}
 
 func (s *Server) GetTransactionID(ctx context.Context, req *api.TransactionId) (*api.Transaction, error) {
 	transaction_id := req.TransactionId
@@ -32,7 +30,7 @@ func (s *Server) GetTransactionID(ctx context.Context, req *api.TransactionId) (
 		RequestTime:   transaction.RequestTime,
 		Status:        transaction.Status,
 	}
-	log.Printf("Transaction Details:\nTransaction Id: %s\nWallet ID: %d\nAmount: %.2f\nTransaction Type: %s\nTransaction Time: %s\nTransaction Status: %s", transaction.TransactionId, int32(transaction.WalletId), transaction.Amount, transaction.Type, transaction.RequestTime, transaction.Status)
+	// log.Printf("Transaction Details:\nTransaction Id: %s\nWallet ID: %d\nAmount: %.2f\nTransaction Type: %s\nTransaction Status: %s\n------------------------", transaction.TransactionId, int32(transaction.WalletId), transaction.Amount, transaction.Type, transaction.RequestTime, transaction.Status)
 
 	return response, nil
 }
@@ -55,7 +53,7 @@ func (s *Server) CreateTransaction(ctx context.Context, req *api.Transaction) (*
 	transactionTime := time.Now()
 	formattedTransactionTime := transactionTime.Format("2006-01-02 15:04:05.00")
 
-	fmt.Printf("\nNew Transaction:\nTransaction Id: %s\nWallet ID: %d\nAmount: %.2f\nTransaction Type: %s\nTransaction Status: %s\nTransaction Time: %s\n\n", TransactionId, walletID, amount, typeTx, statusTx, formattedTransactionTime)
+	// log.Printf("\nNew Transaction. Details:\nTransaction Id: %s\nWallet ID: %d\nAmount: %.2f\nTransaction Type: %s\nTransaction Status: %s\nTransaction Time: %s\n------------------------", TransactionId, walletID, amount, typeTx, statusTx, formattedTransactionTime)
 
 	if err := db.NewTransaction(TransactionId, walletID, amount, typeTx, statusTx, formattedTransactionTime); err != nil {
 		return nil, err
